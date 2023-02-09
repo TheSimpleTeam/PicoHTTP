@@ -1,0 +1,16 @@
+version: '3'
+
+tasks:
+  build:
+    cmds:
+      - javac Main.java -d out --release 21 --enable-preview -Werror
+  run:
+    deps: [build]
+    cmds:
+      - java --enable-preview  --enable-native-access=ALL-UNNAMED -cp out Main
+  edit:
+    cmds:
+      - $EDITOR .
+  et:
+    cmds:
+      - $EDITOR Taskfile.yml
