@@ -1,78 +1,97 @@
-import java.lang.foreign.*;
-import java.lang.invoke.*;
-import java.util.ArrayList;
-import java.util.List;
+import java.io.BufferedOutputStream;
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStreamReader;
+import java.io.OutputStream;
+import java.net.ServerSocket;
+import java.net.Socket;
+import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
-import java.util.Objects;
-
-import static java.lang.foreign.ValueLayout.*;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.function.BiConsumer;
+import java.util.function.Consumer;
 
 public class Main {
-    private static String OS = System.getProperty("os.name").toLowerCase();
-    private static boolean isRunningWindows = OS.contains("WIN");
-    private static SymbolLookup stdlib;
+
+    private static final ExecutorService SERVICE = Executors.newCachedThreadPool();
+    private static final Map<String, BiConsumer<Socket, BufferedOutputStream>> routes = new HashMap<>();
 
     public static void main(String[] args) {
-        /*
-         * Easy way:
-         * System.out.println("Hello World");
-         */
-        // Chad way:
-
-        Linker linker = Linker.nativeLinker();
-        stdlib = linker.defaultLookup();
-        try {
-            printf("%s %s\n", "Hello", "World!");
-            printf("Is tty %d\n", isATTY());
-        } catch (Throwable t) {
-            t.printStackTrace();
-        }
-    }
-
-    private static int isATTY() throws Throwable {
-        var isatty = Linker.nativeLinker().downcallHandle(
-                stdlib.find((isRunningWindows ? "_" : "") + "isatty").orElseThrow(),
-                FunctionDescriptor.of(JAVA_INT, JAVA_INT));
-        var fileno = Linker.nativeLinker().downcallHandle(
-                stdlib.find((isRunningWindows ? "_" : "") + "fileno").orElseThrow(),
-                FunctionDescriptor.of(JAVA_INT, ADDRESS));
-        var stdin = stdlib.find("stdin").orElseThrow();
-        return (int) isatty.invokeExact((int) fileno.invokeExact(stdin));
-    }
-
-    private static int printf(String fmt, Object... text) throws Throwable {
-        MethodType type = MethodType.methodType(int.class, MemorySegment.class);
-        FunctionDescriptor descriptor = FunctionDescriptor.of(JAVA_INT, ADDRESS);
-        List<MemoryLayout> segments = new ArrayList<>();
-        try(Arena arena = Arena.openConfined()) {
-            for(Object o : text) {
-                Class<?> clazz = switch(o) {
-                    case Integer i -> int.class;
-                    case Long l -> long.class;
-                    default -> MemorySegment.class;
-                };
-                type = type.appendParameterTypes(clazz);
-                //segments.add(allocate(arena, o));
-                segments.add(o instanceof Integer ? JAVA_INT : (o instanceof Long ? JAVA_LONG : ADDRESS));
+        routes.put("/", Main::helloWorld);
+        try (ServerSocket server = new ServerSocket(8080)) {
+            while (true) {
+                listenForRequests(server);
             }
-            Linker.Option varargIndex = Linker.Option.firstVariadicArg(descriptor.argumentLayouts().size());
-            return (int) Linker.nativeLinker().downcallHandle(
-                    stdlib.find("printf").orElseThrow(),
-                    descriptor.appendArgumentLayouts(segments.toArray(MemoryLayout[]::new)),
-                    varargIndex)
-                .asSpreader(1, Object[].class, text.length)
-                .invoke(allocate(arena, fmt),
-                        Arrays.stream(text).map(o -> allocate(arena, o)).toArray());
+        } catch (IOException | ExecutionException | InterruptedException e) {
+            e.printStackTrace();
         }
     }
 
-    private static MemorySegment allocate(Arena arena, Object o) {
-        return switch(o) {
-            case Integer i -> arena.allocate(JAVA_INT, i.intValue());
-            case Long l -> arena.allocate(JAVA_LONG, l.longValue());
-            case Number n -> arena.allocate(JAVA_INT, n.intValue());
-            case String str -> arena.allocateUtf8String(str);
-            default -> null;
-        };
+    private static void helloWorld(Socket client, BufferedOutputStream os) {
+        try {
+            String text = "Hello gentleman, I'm Minemobs and this is a test for PicoHTTP/0.1";
+            os.write(String.format(
+                    "HTTP/1.0 200 I'm lazy\nServer: PicoHTTP/0.1\nContent-type: text/plain\nContent-Length: %d\n\n%s",
+                    text.length(), text).getBytes(StandardCharsets.UTF_8));
+            os.flush();
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
     }
+
+    private static void error404(Socket client, BufferedOutputStream os) {
+        try {
+            String text = "<!DOCTYPE html><html><head><title>PicoHTTP - Error 404</title></head><body><h1 style=\"text-align: center;\">Error 404</h1></body></html>";
+            os.write(String.format(
+                    "HTTP/1.0 404 Not found\nServer: PicoHTTP/0.1\nContent-type: text/html\nContent-Length: %d\n\n%s",
+                    text.length(), text).getBytes(StandardCharsets.UTF_8));
+            os.flush();
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+
+    public static void listenForRequests(ServerSocket server)
+            throws IOException, ExecutionException, InterruptedException {
+        Socket socket = server.accept();
+        Future<? extends IOException> future = SERVICE.submit(() -> {
+            try (BufferedOutputStream os = new BufferedOutputStream(socket.getOutputStream());
+                    BufferedReader is = new BufferedReader(
+                            new InputStreamReader(socket.getInputStream(), StandardCharsets.UTF_8))) {
+                String[] headers = collectLines(is).split("\n");
+                String path = headers[0].split("\\s+")[1];
+                System.out.println(path);
+                routes.getOrDefault(path, Main::error404).accept(socket, os);
+                os.flush();
+                return null;
+            } catch (IOException e) {
+                return e;
+            }
+        });
+        IOException e = future.get();
+        if (e != null)
+            throw e;
+        socket.close();
+    }
+
+    private static String collectLines(BufferedReader reader) {
+        StringBuilder builder = new StringBuilder();
+        while (true) {
+            try {
+                String str = reader.readLine();
+                if (str == null || str.isEmpty() || str.isBlank())
+                    break;
+                builder.append(str + "\n");
+            } catch (IOException e) {
+                break;
+            }
+        }
+        return builder.toString();
+    }
+
 }

@@ -3,11 +3,10 @@ version: '3'
 tasks:
   build:
     cmds:
-      - javac Main.java -d out --release 21 --enable-preview -Werror
+      - javac Main.java -d out -Werror
   run:
-    deps: [build]
     cmds:
-      - java --enable-preview  --enable-native-access=ALL-UNNAMED -cp out Main
+      - java Main.java
   edit:
     cmds:
       - $EDITOR .
