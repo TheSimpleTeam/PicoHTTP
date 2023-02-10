@@ -3,10 +3,13 @@ version: '3'
 tasks:
   build:
     cmds:
-      - javac Main.java -d out -Werror
+      - ./gradlew build
   run:
+    sources:
+      - src/main/java/net/thesimpleteam/picohttp/PicoHTTP.java
+      - src/test/java/TestHTTP.java
     cmds:
-      - java Main.java
+      - ./gradlew test
   edit:
     cmds:
       - $EDITOR .
