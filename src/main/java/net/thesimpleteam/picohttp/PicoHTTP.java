@@ -4,9 +4,11 @@ import java.io.BufferedOutputStream;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.lang.reflect.InvocationTargetException;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
@@ -44,6 +46,25 @@ public class PicoHTTP implements AutoCloseable {
     public void addRoute(String path, Consumer<Client> consumer) {
         if(path == null || path.isEmpty()) path = "/";
         routes.put(path, consumer);
+    }
+
+    public <T> void addRoutes(Class<T> clazz, T instance) {
+        Arrays.stream(clazz.getDeclaredMethods())
+            .filter(m -> m.getParameterCount() == 1 && m.getParameterTypes()[0] == Client.class)
+            .filter(m -> m.getAnnotation(Path.class) != null)
+            .filter(m -> m.trySetAccessible())
+            .forEach(m -> {
+                Path path = m.getAnnotation(Path.class);
+                String strPath = path.value();
+                strPath = strPath.charAt(0) != '/' ? "/" + strPath : strPath;
+                addRoute(strPath, (client) -> {
+                    try {
+                        m.invoke(instance, client);
+                    } catch(InvocationTargetException | IllegalAccessException ex) {
+                        ex.printStackTrace();
+                    }
+                });
+            });
     }
 
     public void run() {

@@ -12,7 +12,7 @@ public record Client(Socket socket, BufferedOutputStream output) {
 			if (codeMessage == null) codeMessage = "Ok";
 			if (contentType == null) contentType = ContentTypes.HTML;
 			output.write(String.format(
-					"HTTP/1.0 %d %s\nServer: PicoHTTP/0.1\nContent-type: %s\nContent-Length: %d\n\n%s",
+					"HTTP/1.1 %d %s\nServer: PicoHTTP/0.1\nContent-type: %s\nContent-Length: %d\n\n%s",
 					code, codeMessage, contentType.getContentType(), text.length(), text).getBytes(StandardCharsets.UTF_8));
 			output.flush();
 		} catch (IOException e) {
