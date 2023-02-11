@@ -1,14 +1,16 @@
-import java.io.BufferedOutputStream;
 import java.io.IOException;
-import java.net.Socket;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 
 import org.junit.jupiter.api.Test;
+
+import net.thesimpleteam.picohttp.Client;
+import net.thesimpleteam.picohttp.ContentTypes;
 import net.thesimpleteam.picohttp.PicoHTTP;
 
 import static org.junit.jupiter.api.Assertions.*;
-import static net.thesimpleteam.picohttp.PicoHTTP.writeHTML;
 
 class TestHTTP {
 
@@ -18,6 +20,7 @@ class TestHTTP {
     void run() throws IOException {
         try(PicoHTTP http = new PicoHTTP(8080)) {
             http.addRoute("/", this::helloWorld);
+            http.addRoute("/build.gradle", (t) -> t.send(200, "Ok", ContentTypes.PLAIN, read(Path.of("build.gradle"))));
             http.run();
             URL url = new URL("http://localhost:8080");
             String str = new String(url.openStream().readAllBytes(), StandardCharsets.UTF_8);
@@ -25,13 +28,15 @@ class TestHTTP {
         }
     }
 
-    private void helloWorld(Socket client, BufferedOutputStream os) {
+    private String read(Path path) {
+        String content = "";
         try {
-            os.write(writeHTML(200, "Ok", helloWorldText).getBytes(StandardCharsets.UTF_8));
-            os.flush();
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
+            content = Files.readString(path);
+        } catch(IOException ignored) {}
+        return content;
     }
-    
+
+    private void helloWorld(Client client) {
+        client.send(200, "Ok", ContentTypes.HTML, helloWorldText);
+    }
 }
