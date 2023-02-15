@@ -1,6 +1,7 @@
 plugins {
     id 'java'
     id 'eclipse'
+    id 'maven-publish'
 }
 
 group 'net.thesimpleteam.picohttp'
@@ -27,4 +28,41 @@ dependencies {
 
 test {
     useJUnitPlatform()
+}
+
+publishing {
+    publications {
+        mavenJava(MavenPublication) {
+            artifactId = project.name
+            from components.java
+            pom {
+                name = project.name
+                description = project.description
+                url = "https://github.com/Sunderia/SunderiaUtils"
+                licenses {
+                    license {
+                        name = 'MIT'
+                        url = 'https://opensource.org/licenses/MIT'
+                    }
+                }
+                developers {
+                    developer {
+                        id = 'minemobs'
+                        name = 'minemobs'
+                    }
+                }
+            }
+        }
+    }
+    repositories {
+        maven {
+            name 'thesimpleteamRepo'
+            def extension = version.toString().endsWith('-SNAPSHOT') ? 'snapshots' : 'releases'
+            url 'https://maven.thesimpleteam.net/' + extension
+            credentials(PasswordCredentials)
+            authentication {
+                basic(BasicAuthentication)
+            }
+        }
+    }
 }
