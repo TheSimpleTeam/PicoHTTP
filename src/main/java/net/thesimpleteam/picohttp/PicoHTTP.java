@@ -5,6 +5,7 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Modifier;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.nio.charset.StandardCharsets;
@@ -17,13 +18,12 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
-import java.util.function.Consumer;
 
 public class PicoHTTP implements AutoCloseable {
 
     private final ExecutorService service = Executors.newCachedThreadPool();
-    private final Map<String, Consumer<Client>> routes = new HashMap<>();
-    private Consumer<Client> error404 = this::error404;
+    private final Map<String, ThrowingConsumer<Client>> routes = new HashMap<>();
+    private ThrowingConsumer<Client> error404 = this::error404;
     private final ServerSocket server;
 
     public PicoHTTP(int port) throws IOException {
@@ -39,11 +39,11 @@ public class PicoHTTP implements AutoCloseable {
         this.server.close();
     }
 
-    public void setDefaultError404(Consumer<Client> consumer) {
+    public void setDefaultError404(ThrowingConsumer<Client> consumer) {
         this.error404 = Objects.requireNonNull(consumer);
     }
 
-    public void addRoute(String path, Consumer<Client> consumer) {
+    public void addRoute(String path, ThrowingConsumer<Client> consumer) {
         if(path == null || path.isEmpty()) path = "/";
         routes.put(path, consumer);
     }
@@ -53,6 +53,7 @@ public class PicoHTTP implements AutoCloseable {
             .filter(m -> m.getParameterCount() == 1 && m.getParameterTypes()[0] == Client.class)
             .filter(m -> m.getAnnotation(Path.class) != null)
             .filter(m -> m.trySetAccessible())
+            .filter(m -> (instance == null && Modifier.isStatic(m.getModifiers())) || instance != null)
             .forEach(m -> {
                 Path path = m.getAnnotation(Path.class);
                 String strPath = path.value();
@@ -79,6 +80,17 @@ public class PicoHTTP implements AutoCloseable {
         });
     }
 
+    private Map<String, String> parseHeaders(String[] headers) {
+        Map<String, String> map = new HashMap<>();
+        String[] methodAndPath = headers[0].split(" ");
+        map.put(methodAndPath[0], methodAndPath[1]);
+        for(int i = 1; i < headers.length; i++) {
+            String[] split = headers[i].split(": ");
+            map.put(split[0], split[1]);
+        }
+        return map;
+    }
+
     public void listenForRequests(ServerSocket server)
             throws IOException, ExecutionException, InterruptedException {
         if(server.isClosed()) return;
@@ -89,7 +101,7 @@ public class PicoHTTP implements AutoCloseable {
                             new InputStreamReader(socket.getInputStream(), StandardCharsets.UTF_8))) {
                 String[] headers = collectLines(is).split("\n");
                 String path = headers[0].split("\\s+")[1];
-                routes.getOrDefault(path, this.error404).accept(new Client(socket, os));
+                routes.getOrDefault(path, this.error404).accept(new Client(socket, os, parseHeaders(headers)));
                 os.flush();
                 return null;
             } catch (IOException e) {
@@ -117,8 +129,8 @@ public class PicoHTTP implements AutoCloseable {
         return builder.toString();
     }
 
-    private void error404(Client client) {
+    private void error404(Client client) throws IOException {
         String text = "<!DOCTYPE html><html><head><title>PicoHTTP - Error 404</title></head><body><h1>Error 404</h1></body></html>";
-        client.send(404, "Not found", ContentTypes.HTML, text);;
+        client.send(404, "Not found", ContentTypes.HTML, text);
     }
 }

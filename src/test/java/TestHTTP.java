@@ -25,8 +25,9 @@ class TestHTTP {
             http.addRoute("/build.gradle", (t) -> t.send(200, "Ok", ContentTypes.PLAIN, read("build.gradle")));
             http.run();
             URL url = new URL("http://localhost:8080");
-            String str = new String(url.openStream().readAllBytes(), StandardCharsets.UTF_8);
-            assertArrayEquals(str.toCharArray(), helloWorldText.toCharArray());
+            try(var is = url.openStream()) {
+                assertEquals(new String(url.openStream().readAllBytes(), StandardCharsets.UTF_8), helloWorldText);
+            }
         }
     }
 
@@ -39,7 +40,7 @@ class TestHTTP {
     }
 
     @Path("/")
-    private void helloWorld(Client client) {
+    private void helloWorld(Client client) throws IOException {
         client.send(200, "Ok", ContentTypes.HTML, helloWorldText);
     }
 }
