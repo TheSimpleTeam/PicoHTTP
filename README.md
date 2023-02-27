@@ -13,7 +13,7 @@ repositories {
 
 dependencies {
   //...
-  implementation "net.thesimpleteam:picoHTTP:1.1-SNAPSHOT"
+  implementation "net.thesimpleteam:picoHTTP:1.1.1-SNAPSHOT"
 }
 ```
 
