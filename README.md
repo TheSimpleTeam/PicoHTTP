@@ -25,6 +25,7 @@ public class Server {
     try(PicoHTTP http = new PicoHTTP()) {
       http.addRoutes(Server.class, this);
       http.addRoute("/test.js", (client) -> client.send(200, "OK", ContentTypes.JS, "console.log('Hello World')"));
+      http.run();
     }
   }
 
