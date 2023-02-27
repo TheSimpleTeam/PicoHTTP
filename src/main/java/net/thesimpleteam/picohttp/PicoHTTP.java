@@ -35,7 +35,8 @@ public class PicoHTTP implements AutoCloseable {
         this.service.shutdownNow();
         try {
             this.service.awaitTermination(2, TimeUnit.SECONDS);
-        } catch(InterruptedException ignored) {}
+        } catch (InterruptedException ignored) {
+        }
         this.server.close();
     }
 
@@ -44,28 +45,29 @@ public class PicoHTTP implements AutoCloseable {
     }
 
     public void addRoute(String path, ThrowingConsumer<Client> consumer) {
-        if(path == null || path.isEmpty()) path = "/";
+        if (path == null || path.isEmpty())
+            path = "/";
         routes.put(path, consumer);
     }
 
     public <T> void addRoutes(Class<T> clazz, T instance) {
         Arrays.stream(clazz.getDeclaredMethods())
-            .filter(m -> m.getParameterCount() == 1 && m.getParameterTypes()[0] == Client.class)
-            .filter(m -> m.getAnnotation(Path.class) != null)
-            .filter(m -> m.trySetAccessible())
-            .filter(m -> (instance == null && Modifier.isStatic(m.getModifiers())) || instance != null)
-            .forEach(m -> {
-                Path path = m.getAnnotation(Path.class);
-                String strPath = path.value();
-                strPath = strPath.charAt(0) != '/' ? "/" + strPath : strPath;
-                addRoute(strPath, (client) -> {
-                    try {
-                        m.invoke(instance, client);
-                    } catch(InvocationTargetException | IllegalAccessException ex) {
-                        ex.printStackTrace();
-                    }
+                .filter(m -> m.getParameterCount() == 1 && m.getParameterTypes()[0] == Client.class)
+                .filter(m -> m.getAnnotation(Path.class) != null)
+                .filter(m -> m.trySetAccessible())
+                .filter(m -> (instance == null && Modifier.isStatic(m.getModifiers())) || instance != null)
+                .forEach(m -> {
+                    Path path = m.getAnnotation(Path.class);
+                    String strPath = path.value();
+                    strPath = strPath.charAt(0) != '/' ? "/" + strPath : strPath;
+                    addRoute(strPath, (client) -> {
+                        try {
+                            m.invoke(instance, client);
+                        } catch (InvocationTargetException | IllegalAccessException ex) {
+                            ex.printStackTrace();
+                        }
+                    });
                 });
-            });
     }
 
     public void run() {
@@ -82,9 +84,7 @@ public class PicoHTTP implements AutoCloseable {
 
     private Map<String, String> parseHeaders(String[] headers) {
         Map<String, String> map = new HashMap<>();
-        String[] methodAndPath = headers[0].split(" ");
-        map.put(methodAndPath[0], methodAndPath[1]);
-        for(int i = 1; i < headers.length; i++) {
+        for (int i = 1; i < headers.length; i++) {
             String[] split = headers[i].split(": ");
             map.put(split[0], split[1]);
         }
@@ -93,7 +93,8 @@ public class PicoHTTP implements AutoCloseable {
 
     public void listenForRequests(ServerSocket server)
             throws IOException, ExecutionException, InterruptedException {
-        if(server.isClosed()) return;
+        if (server.isClosed())
+            return;
         Socket socket = server.accept();
         Future<? extends IOException> future = service.submit(() -> {
             try (BufferedOutputStream os = new BufferedOutputStream(socket.getOutputStream());
@@ -101,7 +102,8 @@ public class PicoHTTP implements AutoCloseable {
                             new InputStreamReader(socket.getInputStream(), StandardCharsets.UTF_8))) {
                 String[] headers = collectLines(is).split("\n");
                 String path = headers[0].split("\\s+")[1];
-                routes.getOrDefault(path, this.error404).accept(new Client(socket, os, parseHeaders(headers)));
+                String method = headers[0].split(" ")[0];
+                routes.getOrDefault(path, this.error404).accept(new Client(socket, os, method, parseHeaders(headers)));
                 os.flush();
                 return null;
             } catch (IOException e) {
@@ -109,8 +111,7 @@ public class PicoHTTP implements AutoCloseable {
             }
         });
         IOException e = future.get();
-        if (e != null)
-            throw e;
+        if (e != null) throw e;
         socket.close();
     }
 
