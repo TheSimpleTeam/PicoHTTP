@@ -6,7 +6,7 @@ import java.net.Socket;
 import java.nio.charset.StandardCharsets;
 import java.util.Map;
 
-public record Client(Socket socket, BufferedOutputStream output, String function, Map<String, String> headers) {
+public record Client(Socket socket, BufferedOutputStream output, String method, Map<String, String> headers) {
 
 	public void send(int code, String codeMessage, ContentTypes contentType, String text) throws IOException {
 		if (codeMessage == null) codeMessage = "Ok";

@@ -21,8 +21,36 @@ import java.util.concurrent.TimeUnit;
 
 public class PicoHTTP implements AutoCloseable {
 
+    private class Key<T, Z> {
+        private final T key1;
+        private final Z key2;
+
+        public Key(T key1, Z key2) {
+            this.key1 = key1;
+            this.key2 = key2;
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if(!(o instanceof Key key)) return false;
+            return Objects.equals(key1, key.key1) && Objects.equals(key2, key.key2);
+        }
+
+        @Override
+        public int hashCode() {
+            int result = 17;
+            if (key1 != null) {
+                result = 31 * result + key1.hashCode();
+            }
+            if (key2 != null) {
+                result = 31 * result + key2.hashCode();
+            }
+            return result;
+        }
+    }
+
     private final ExecutorService service = Executors.newCachedThreadPool();
-    private final Map<String, ThrowingConsumer<Client>> routes = new HashMap<>();
+    private final Map<Key<String, String>, ThrowingConsumer<Client>> routes = new HashMap<>();
     private ThrowingConsumer<Client> error404 = this::error404;
     private final ServerSocket server;
 
@@ -35,8 +63,7 @@ public class PicoHTTP implements AutoCloseable {
         this.service.shutdownNow();
         try {
             this.service.awaitTermination(2, TimeUnit.SECONDS);
-        } catch (InterruptedException ignored) {
-        }
+        } catch (InterruptedException ignored) {}
         this.server.close();
     }
 
@@ -45,11 +72,14 @@ public class PicoHTTP implements AutoCloseable {
     }
 
     public void addRoute(String path, ThrowingConsumer<Client> consumer) {
-        if (path == null || path.isEmpty())
-            path = "/";
-        routes.put(path, consumer);
+        addRoute(path, HTTPMethods.GET, consumer);
     }
 
+    public void addRoute(String path, HTTPMethods method, ThrowingConsumer<Client> consumer) {
+        if (path == null || path.isEmpty()) path = "/";
+        routes.put(new Key<String, String>(path, method.name()), consumer);
+    }
+    
     public <T> void addRoutes(Class<T> clazz, T instance) {
         Arrays.stream(clazz.getDeclaredMethods())
                 .filter(m -> m.getParameterCount() == 1 && m.getParameterTypes()[0] == Client.class)
@@ -103,7 +133,7 @@ public class PicoHTTP implements AutoCloseable {
                 String[] headers = collectLines(is).split("\n");
                 String path = headers[0].split("\\s+")[1];
                 String method = headers[0].split(" ")[0];
-                routes.getOrDefault(path, this.error404).accept(new Client(socket, os, method, parseHeaders(headers)));
+                routes.getOrDefault(new Key<String, String>(path, method.toUpperCase()), this.error404).accept(new Client(socket, os, method, parseHeaders(headers)));
                 os.flush();
                 return null;
             } catch (IOException e) {

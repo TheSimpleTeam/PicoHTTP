@@ -10,4 +10,5 @@ import java.lang.annotation.Target;
 
 public @interface Path {
 	String value();
+	HTTPMethods method() default HTTPMethods.GET;
 }

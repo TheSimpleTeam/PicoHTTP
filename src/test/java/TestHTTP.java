@@ -20,7 +20,6 @@ class TestHTTP {
     @Test
     void run() throws IOException {
         try(PicoHTTP http = new PicoHTTP(8080)) {
-            //http.addRoute("/", this::helloWorld);
             http.addRoutes(TestHTTP.class, this);
             http.addRoute("/build.gradle", (t) -> t.send(200, "Ok", ContentTypes.PLAIN, read("build.gradle")));
             http.run();
