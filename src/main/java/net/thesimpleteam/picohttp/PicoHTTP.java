@@ -173,7 +173,6 @@ public class PicoHTTP implements AutoCloseable {
             } catch(Exception e) {
                 break;
             }
-            // char b = (char) reader.read();
             if(b == -1) break;
             if(isReadingHeaders) builder.append(b);
             if(b == '\n') {
@@ -185,7 +184,6 @@ public class PicoHTTP implements AutoCloseable {
                     m -> line.split(" ")[0].equalsIgnoreCase(m.name()))) {
                         isReadingHeaders = false;
                 }
-                System.out.println(line);
                 builder.setLength(0);
                 continue;
             } else if(!isReadingHeaders) {
