@@ -1,16 +1,16 @@
 package net.thesimpleteam.picohttp;
 
 import java.io.BufferedOutputStream;
-import java.io.BufferedReader;
 import java.io.IOException;
-import java.io.InputStreamReader;
+import java.io.InputStream;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Modifier;
 import java.net.ServerSocket;
 import java.net.Socket;
-import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.ExecutionException;
@@ -18,6 +18,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
 
 public class PicoHTTP implements AutoCloseable {
 
@@ -89,8 +90,9 @@ public class PicoHTTP implements AutoCloseable {
                 .forEach(m -> {
                     Path path = m.getAnnotation(Path.class);
                     String strPath = path.value();
+                    HTTPMethods method = path.method();
                     strPath = strPath.charAt(0) != '/' ? "/" + strPath : strPath;
-                    addRoute(strPath, (client) -> {
+                    addRoute(strPath, method, (client) -> {
                         try {
                             m.invoke(instance, client);
                         } catch (InvocationTargetException | IllegalAccessException ex) {
@@ -116,6 +118,7 @@ public class PicoHTTP implements AutoCloseable {
         Map<String, String> map = new HashMap<>();
         for (int i = 1; i < headers.length; i++) {
             String[] split = headers[i].split(": ");
+            if(split.length != 2) break;
             map.put(split[0], split[1]);
         }
         return map;
@@ -128,12 +131,14 @@ public class PicoHTTP implements AutoCloseable {
         Socket socket = server.accept();
         Future<? extends IOException> future = service.submit(() -> {
             try (BufferedOutputStream os = new BufferedOutputStream(socket.getOutputStream());
-                    BufferedReader is = new BufferedReader(
-                            new InputStreamReader(socket.getInputStream(), StandardCharsets.UTF_8))) {
-                String[] headers = collectLines(is).split("\n");
-                String path = headers[0].split("\\s+")[1];
-                String method = headers[0].split(" ")[0];
-                routes.getOrDefault(new Key<String, String>(path, method.toUpperCase()), this.error404).accept(new Client(socket, os, method, parseHeaders(headers)));
+                    var is = socket.getInputStream()) {
+                String lines = collectLines(is);
+                String[] headers = lines.split("\n");
+                String[] pathAndMethod = headers[0].split(" ");
+                String method = pathAndMethod[0];
+                String path = pathAndMethod[1];
+                String data = getData(headers).strip();
+                routes.getOrDefault(new Key<String, String>(path, method.toUpperCase()), this.error404).accept(new Client(socket, os, method, parseHeaders(headers), data));
                 os.flush();
                 return null;
             } catch (IOException e) {
@@ -145,19 +150,51 @@ public class PicoHTTP implements AutoCloseable {
         socket.close();
     }
 
-    private String collectLines(BufferedReader reader) {
+    private String getData(String[] headers) {
         StringBuilder builder = new StringBuilder();
-        while (true) {
-            try {
-                String str = reader.readLine();
-                if (str == null || str.isEmpty() || str.isBlank())
-                    break;
-                builder.append(str + "\n");
-            } catch (IOException e) {
-                break;
-            }
+        //TODO: It will break if the data has an empty line
+        for(int i = headers.length - 1; i > 0; i--) {
+            if(headers[i].isEmpty()) break;
+            builder.insert(0, headers[i] + "\n");
         }
         return builder.toString();
+    }
+
+    private String collectLines(InputStream reader) throws IOException {
+        List<String> lines = new ArrayList<>();
+        StringBuilder builder = new StringBuilder();
+        int contentLength = 0, i = 0;
+        boolean isReadingHeaders = true;
+        while(true) {
+            char b = (char) reader.read();
+            if(b == -1) break;
+            if(isReadingHeaders) builder.append(b);
+            if(b == '\n') {
+                String line = builder.toString().stripTrailing();
+                lines.add(line);
+                if(line.startsWith("Content-Length:")) contentLength = parseInt(line.split(":")[1].strip(), 0);
+                else if(!line.matches("[a-zA-Z\\-]+:\\s?.+")
+                    && Arrays.stream(HTTPMethods.values()).noneMatch(
+                    m -> line.split(" ")[0].equalsIgnoreCase(m.name()))) {
+                        isReadingHeaders = false;
+                }
+                builder.setLength(0);
+                continue;
+            } else if(!isReadingHeaders) {
+                builder.append(b);
+                if(++i == contentLength) break;
+            }
+        }
+        return lines.stream().collect(Collectors.joining("\n")) + "\n" + builder.toString();
+    }
+
+    private int parseInt(String str, int defaultValue) {
+        try {
+            return Integer.parseInt(str);
+        } catch(NumberFormatException ignored) {
+            System.err.printf("Got %s which is not an int, returning %d\n", str, defaultValue);
+            return defaultValue;
+        }
     }
 
     private void error404(Client client) throws IOException {

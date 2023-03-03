@@ -6,8 +6,22 @@ import java.net.Socket;
 import java.nio.charset.StandardCharsets;
 import java.util.Map;
 
-public record Client(Socket socket, BufferedOutputStream output, String method, Map<String, String> headers) {
+/**
+* @param socket The socket of the HTTP client
+* @param output The output stream of the HTTP client, it's used to send the data. @see Client#send(int, String, ContentTypes, String)
+* @param method The HTTP method used, for example GET or POST
+* @param headers A map containing the headers sent by the HTTP client.
+* @param data The data sent by the HTTP client, it might be null if no data has been sent (eg: when it's a GET request).
+*/
+public record Client(Socket socket, BufferedOutputStream output, String method, Map<String, String> headers, String data) {
 
+	/**
+	* It uses the {@link Client#send(int, String, ContentTypes, String)} and sets the ContentType to {@link ContentTypes#PLAIN} and the text to the codeMessage parameter.
+	*/
+	public void send(int code, String codeMessage) throws IOException {
+		this.send(code, codeMessage, ContentTypes.PLAIN, codeMessage);
+	}
+	
 	public void send(int code, String codeMessage, ContentTypes contentType, String text) throws IOException {
 		if (codeMessage == null) codeMessage = "Ok";
 		if (contentType == null) contentType = ContentTypes.HTML;
