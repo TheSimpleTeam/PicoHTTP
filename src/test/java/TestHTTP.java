@@ -1,8 +1,15 @@
 import java.io.IOException;
+import java.net.HttpURLConnection;
+import java.net.URI;
 import java.net.URL;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Paths;
+import java.time.Duration;
+import java.util.logging.Logger;
 
 import org.junit.jupiter.api.Test;
 
@@ -16,17 +23,28 @@ import static org.junit.jupiter.api.Assertions.*;
 class TestHTTP {
 
     final String helloWorldText = "<!DOCTYPE html><html><head><title>PicoHTTP - Test</title></head><body><h1>Hello gentleman, I'm Minemobs and this is a test for PicoHTTP/0.1</h1></body></html>";
+    final Logger log = Logger.getLogger("Test");
+    final int port = 8080;
     
     @Test
     void run() throws IOException {
-        try(PicoHTTP http = new PicoHTTP(8080)) {
+        log.info("Test");
+        try(PicoHTTP http = new PicoHTTP(port)) {
             http.addRoutes(TestHTTP.class, this);
             http.addRoute("/build.gradle", (t) -> t.send(200, "Ok", ContentTypes.PLAIN, read("build.gradle")));
+            log.info("Added routes");
             http.run();
-            URL url = new URL("http://localhost:8080");
-            try(var is = url.openStream()) {
-                assertEquals(new String(url.openStream().readAllBytes(), StandardCharsets.UTF_8), helloWorldText);
+            HttpRequest request = HttpRequest.newBuilder(URI.create("http://localhost:" + port))
+                .timeout(Duration.ofSeconds(3)).GET().build();
+            var client = HttpClient.newBuilder().build();
+            HttpResponse<String> res = null;
+            try {
+                res = client.send(request, HttpResponse.BodyHandlers.ofString());
+            } catch(InterruptedException e) {
+                fail(e);
+                return;
             }
+            assertEquals(res.body(), helloWorldText);
         }
     }
 
