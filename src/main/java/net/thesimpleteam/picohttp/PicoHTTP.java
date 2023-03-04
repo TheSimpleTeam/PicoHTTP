@@ -13,11 +13,14 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 import java.util.stream.Collectors;
 
 public class PicoHTTP implements AutoCloseable {
@@ -54,6 +57,7 @@ public class PicoHTTP implements AutoCloseable {
     private final Map<Key<String, String>, ThrowingConsumer<Client>> routes = new HashMap<>();
     private ThrowingConsumer<Client> error404 = this::error404;
     private final ServerSocket server;
+    private final Logger logger = Logger.getLogger("PicoHTTP");
 
     public PicoHTTP(int port) throws IOException {
         this.server = new ServerSocket(port);
@@ -137,7 +141,7 @@ public class PicoHTTP implements AutoCloseable {
                 String[] pathAndMethod = headers[0].split(" ");
                 String method = pathAndMethod[0];
                 String path = pathAndMethod[1];
-                String data = getData(headers).strip();
+                String data = method.equalsIgnoreCase("GET") ? null : getData(headers).strip();
                 routes.getOrDefault(new Key<String, String>(path, method.toUpperCase()), this.error404).accept(new Client(socket, os, method, parseHeaders(headers), data));
                 os.flush();
                 return null;
@@ -152,42 +156,38 @@ public class PicoHTTP implements AutoCloseable {
 
     private String getData(String[] headers) {
         StringBuilder builder = new StringBuilder();
-        //TODO: It will break if the data has an empty line
-        for(int i = headers.length - 1; i > 0; i--) {
-            if(headers[i].isEmpty()) break;
-            builder.insert(0, headers[i] + "\n");
+        boolean foundAnEmptyLine = false;
+        for(int i = 0; i < headers.length; i++) {
+            if(!foundAnEmptyLine && headers[i].isEmpty()) foundAnEmptyLine = true;
+            else if(!foundAnEmptyLine) continue;
+            builder.append(headers[i]).append("\n");
         }
         return builder.toString();
     }
 
     private String collectLines(InputStream reader) throws IOException {
+        //TODO: refactor this code
         List<String> lines = new ArrayList<>();
         StringBuilder builder = new StringBuilder();
         int contentLength = 0, i = 0;
         boolean isReadingHeaders = true;
+        HTTPMethods method = HTTPMethods.GET;
         while(true) {
-            Future<Character> future = service.submit(() -> (char) reader.read());
-            char b = (char) -1;
-            try {
-                b = future.get(20, TimeUnit.MILLISECONDS);
-            } catch(Exception e) {
-                break;
-            }
-            if(b == -1) break;
-            if(isReadingHeaders) builder.append(b);
-            if(b == '\n') {
+            char b = (char) reader.read();
+            builder.append(b);
+            if(isReadingHeaders && b == '\n') {
                 String line = builder.toString().stripTrailing();
                 lines.add(line);
+                Optional<HTTPMethods> httpMethod = Arrays.stream(HTTPMethods.values())
+                    .filter(m -> line.split(" ")[0].equalsIgnoreCase(m.name())).findFirst();
+                if(httpMethod.isPresent()) method = httpMethod.get();
                 if(line.startsWith("Content-Length:")) contentLength = parseInt(line.split(":")[1].strip(), 0);
-                else if(!line.matches("[a-zA-Z\\-]+:\\s?.+")
-                    && Arrays.stream(HTTPMethods.values()).noneMatch(
-                    m -> line.split(" ")[0].equalsIgnoreCase(m.name()))) {
-                        isReadingHeaders = false;
+                else if(!line.matches("[a-zA-Z\\-]+:\\s?.+") && httpMethod.isEmpty()) {
+                    isReadingHeaders = false;
                 }
+                if(builder.toString().isBlank() && method == HTTPMethods.GET) break;
                 builder.setLength(0);
-                continue;
-            } else if(!isReadingHeaders) {
-                builder.append(b);
+            } else if(!isReadingHeaders && method != HTTPMethods.GET) {
                 if(++i >= contentLength) break;
             }
         }
@@ -198,7 +198,7 @@ public class PicoHTTP implements AutoCloseable {
         try {
             return Integer.parseInt(str);
         } catch(NumberFormatException ignored) {
-            System.err.printf("Got %s which is not an int, returning %d\n", str, defaultValue);
+            logger.log(Level.WARNING, "Couldn't parse " + str, ignored);
             return defaultValue;
         }
     }
