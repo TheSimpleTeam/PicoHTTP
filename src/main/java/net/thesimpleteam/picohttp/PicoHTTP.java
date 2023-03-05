@@ -53,6 +53,7 @@ public class PicoHTTP implements AutoCloseable {
         }
     }
 
+    public static final String VERSION = "@VERSION@"; 
     private final ExecutorService service = Executors.newCachedThreadPool();
     private final Map<Key<String, String>, ThrowingConsumer<Client>> routes = new HashMap<>();
     private ThrowingConsumer<Client> error404 = this::error404;
@@ -142,7 +143,13 @@ public class PicoHTTP implements AutoCloseable {
                 String method = pathAndMethod[0];
                 String path = pathAndMethod[1];
                 String data = method.equalsIgnoreCase("GET") ? null : getData(headers).strip();
-                routes.getOrDefault(new Key<String, String>(path, method.toUpperCase()), this.error404).accept(new Client(socket, os, method, parseHeaders(headers), data));
+                //routes.getOrDefault(new Key<String, String>(path, method.toUpperCase()), this.error404).accept(new Client(socket, os, method, parseHeaders(headers), data, path));
+                routes.entrySet().stream()
+                    .filter(e -> e.getKey().key2.equalsIgnoreCase(method) && path.matches(e.getKey().key1))
+                    .map(Map.Entry::getValue)
+                    .findFirst()
+                    .orElse(this::error404)
+                    .accept(new Client(socket, os, method, parseHeaders(headers), data, path));
                 os.flush();
                 return null;
             } catch (IOException e) {

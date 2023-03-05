@@ -13,7 +13,7 @@ repositories {
 
 dependencies {
   //...
-  implementation "net.thesimpleteam:picoHTTP:1.2.4-SNAPSHOT"
+  implementation "net.thesimpleteam:picoHTTP:1.3-SNAPSHOT"
 }
 ```
 
@@ -42,6 +42,12 @@ public class Server {
     String contentType = client.getHeaders().get("Content-Type");
     //Your code
     client.send(501, "Not Implemented");
+  }
+
+  @Path("/hello/\\w+") //Regex example
+  public void helloSomeone(Client client) throws IOException {
+    String name = client.path().split("/")[2]; //When you split the path it should return something like {"", "hello", "(theName)"}
+    client.send(200, "Ok", ContentTypes.PLAIN, "Hello " + name);
   }
 }
 

@@ -4,14 +4,20 @@ plugins {
     id 'maven-publish'
 }
 
-group 'net.thesimpleteam'
-version '1.2.4-SNAPSHOT'
+import org.apache.tools.ant.filters.ReplaceTokens
 
-repositories {
-    mavenCentral()
+group 'net.thesimpleteam'
+version '1.3-SNAPSHOT'
+
+task processSource(type: Copy) {
+    from sourceSets.main.java
+    inputs.property 'version', version
+    filter(ReplaceTokens, tokens: [VERSION: version])
+    into "$buildDir/src"
 }
 
 compileJava {
+    source = processSource.outputs
     options.encoding = 'UTF-8'
 }
 
@@ -21,6 +27,10 @@ java {
     }
     withJavadocJar()
     withSourcesJar()
+}
+
+repositories {
+    mavenCentral()
 }
 
 dependencies {

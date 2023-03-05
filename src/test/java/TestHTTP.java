@@ -47,7 +47,22 @@ class TestHTTP {
             return;
         }
         assertNotNull(res);
-        assertEquals(res.body(), getTextRequest);
+        assertEquals(getTextRequest, res.body());
+    }
+
+    @Test
+    void testRegexGet() throws IOException {
+        HttpRequest request = HttpRequest.newBuilder(URI.create("http://localhost:" + port + "/hello/minemobs")).GET().build();
+        var client = HttpClient.newBuilder().version(Version.HTTP_1_1).connectTimeout(Duration.ofSeconds(10)).build();
+        HttpResponse<String> res = null;
+        try {
+            res = client.send(request, HttpResponse.BodyHandlers.ofString());
+        } catch (InterruptedException e) {
+            fail(e);
+            return;
+        }
+        assertNotNull(res);
+        assertEquals("Hello minemobs", res.body());
     }
     
     @Test
@@ -62,7 +77,7 @@ class TestHTTP {
             return;
         }
         assertNotNull(res);
-        assertEquals(res.body(), postTextRequest);
+        assertEquals(postTextRequest, res.body());
     }
 
     @AfterAll
@@ -78,5 +93,10 @@ class TestHTTP {
     @Path("/")
     private void helloWorld(Client client) throws IOException {
         client.send(200, "Ok", ContentTypes.HTML, getTextRequest);
+    }
+
+    @Path("/hello/\\w+")
+    private void helloSomeone(Client client) throws IOException {
+        client.send(200, "Ok", ContentTypes.PLAIN, "Hello " + client.path().substring(1, client.path().length()).split("/")[1]);
     }
 }
