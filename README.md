@@ -1,8 +1,13 @@
 # PicoHTTP
 A lightweight http server
 
+:warning: **YOU SHOULD NOT use this library in production due to https://github.com/thesimpleteam/picohttp/issues/2.**
+
 #### Install
 
+<details>
+  <summary>Using Gradle</summary>
+  
 ```groovy
 repositories {
   //...
@@ -16,8 +21,11 @@ dependencies {
   implementation "net.thesimpleteam:picoHTTP:1.3-SNAPSHOT"
 }
 ```
+</details>
 
 ### Usage
+<details>
+  <summary>Usage</summary>
 
 ```java
 public class Server {
@@ -50,5 +58,5 @@ public class Server {
     client.send(200, "Ok", ContentTypes.PLAIN, "Hello " + name);
   }
 }
-
 ```
+</details>
